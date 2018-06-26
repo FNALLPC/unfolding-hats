@@ -1,0 +1,119 @@
+"""
+Unfolding HATS 2018
+
+Collection functions for making plots and 
+simple analysis
+
+For use with jupyter notebooks and 
+%matplotlib inline 
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+
+def hist2array(histo):
+    """Convert histogram to dictionary of arrays 
+       for plotting with matplotlib
+        Only handle 1-D and 2-D histograms
+    """
+    nbinsx = histo.GetNbinsX()
+    nbinsy = histo.GetNbinsY()
+
+    bin_center  = {'x':[],'y':[]}
+    bin_content = []
+    bin_error   = []
+
+    bins = {'x':[histo.GetXaxis().GetBinLowEdge(1)],\
+            'y':[histo.GetYaxis().GetBinLowEdge(1)]}
+    bins['x']+=[histo.GetXaxis().GetBinUpEdge(i) for i in xrange(1,nbinsx+1)]
+    bins['y']+=[histo.GetYaxis().GetBinUpEdge(j) for j in xrange(1,nbinsy+1)]
+
+    # loop over bins
+    for j in xrange(1,nbinsy+1):
+        ycenter = histo.GetYaxis().GetBinCenter(j)
+        for i in xrange(1,nbinsx+1):
+            bin_center['x'].append(histo.GetXaxis().GetBinCenter(i))
+            bin_center['y'].append(ycenter)
+            bin_content.append(histo.GetBinContent(i,j))
+            bin_error.append(histo.GetBinError(i,j))
+
+    # if only 1D histogram, drop the y-axis information
+    if nbinsy==1:
+        bins = bins['x']
+        bin_center = bin_center['x']
+
+    results = {'data':  np.array(bin_content),
+               'error': np.array(bin_error),
+               'bins':  bins,
+               'center':bin_center}
+
+    return results
+
+
+def plotResponseMatrix(resmat):
+    """Plot the response matrix
+        - Assume the response matrix is a TH2
+        - Make histogram in matplotlib using 'weights' argument
+          to handle the bin content, and dummy values for the x/y
+    """
+    data = hist2array(resmat)
+    bins = data['bins']
+    binning = (bins['x'],bins['y'])
+
+    # create dummy values for a histogram
+    dummy_xbins = data['center']['x']
+    dummy_ybins = data['center']['y']
+
+    # make histogram with dummy values and bin contents as weights
+    plt.hist2d(dummy_xbins,dummy_ybins,bins=binning,weights=data['data'])
+    plt.colorbar()
+    plt.xlabel("Reconstructed Bin")
+    plt.ylabel("Generator Bin")
+
+    return
+
+
+def plotYields(data,signal=None,backgrounds=[]):
+    """Plot event yields
+        - Assume we are given TH1s
+        - Convert to arrays for plotting in matplotlib
+    """
+    data = hist2array(data)  # data points
+
+    # stack the backgrounds on top of each other in the plot
+    labels  = []
+    weights = []
+    allcenters = []
+    for i,bckg in enumerate(backgrounds):
+        bckg = hist2array(bckg)
+        labels  += ['background {0}'.format(i)]
+        weights += [list(bckg['data'])]
+        allcenters += [list(bckg['center'])]
+
+    # stack the signal on top of the backgrounds
+    if signal is not None:
+        # 'signal' is what we want to unfold, e.g., ttbar
+        signal   = hist2array(signal)
+        labels  += ['signal']
+        weights += [list(signal['data'])]
+        allcenters += [list(signal['center'])]
+
+    # plot backgrounds & signal
+    d,bb,pp = plt.hist(allcenters,weights=weights,stacked=True,
+                       histtype='stepfilled',label=labels,
+                       edgecolor='k',bins=data['bins'])
+
+    # plot the data as error bars
+    plt.errorbar(data['center'],data['data'],color='k',
+                 fmt='o',yerr=data['error'],
+                 label='Data')
+
+    plt.ylim(ymin=0,ymax=plt.ylim()[1]*1.6) # scale the y-axis to accommodate the legend
+    plt.legend()
+    plt.xlabel("Distribution")
+    plt.ylabel("Events")
+
+    return
+
+## THE END ##
